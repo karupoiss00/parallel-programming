@@ -5,10 +5,10 @@
 #include <optional>
 #include <numeric>
 #include <functional>
+#include <chrono>
 
 #include <tchar.h>
 #include <Windows.h>
-#include <wingdi.h>
 
 #include "BitmapPlusPlus.h"
 
@@ -32,11 +32,13 @@ struct ProcessBitmapInfo
 
 optional<Args> ParseArgs(int argc, _TCHAR* argv[]);
 DWORD WINAPI BlurBitmap(CONST LPVOID lpParam);
-unique_ptr<HANDLE[]> CreateThreads(size_t count, function<ProcessBitmapInfo*(int)> const& dataCreatorFn);
+unique_ptr<HANDLE[]> CreateThreads(size_t count, function<ProcessBitmapInfo* (int)> const& dataCreatorFn);
+void SetCoresLimit(size_t limit);
 
 int _tmain(int argc, _TCHAR* argv[])
 {
     auto args = ParseArgs(argc, argv);
+
 
     if (!args)
     {
@@ -46,6 +48,8 @@ int _tmain(int argc, _TCHAR* argv[])
 
     try
     {
+        SetCoresLimit(args->coresCount);
+
         Bitmap* image = new Bitmap(args->inputFileName);
         unsigned lineHeight = image->height() / args->threadsCount;
 
@@ -55,14 +59,19 @@ int _tmain(int argc, _TCHAR* argv[])
                 threadNumber,
                 lineHeight,
             };
-        });
-       
+            });
+        const auto start{ std::chrono::steady_clock::now() };
+
         for (int i = 0; i < args->threadsCount; i++)
         {
             ResumeThread(threads[i]);
         }
 
         WaitForMultipleObjects(args->threadsCount, threads.get(), true, INFINITE);
+
+        const std::chrono::duration<double> ellapsedSeconds{ std::chrono::steady_clock::now() - start };
+
+        cout << "time: " << ellapsedSeconds.count() << endl;
 
         image->save(args->outputFileName);
     }
@@ -86,7 +95,7 @@ optional<Args> ParseArgs(int argc, _TCHAR* argv[])
 
     result.inputFileName = argv[1];
     result.outputFileName = argv[2];
-    
+
     try
     {
         result.coresCount = stoi(argv[3]);
@@ -115,7 +124,7 @@ unique_ptr<HANDLE[]> CreateThreads(size_t count, function<ProcessBitmapInfo* (in
     return threads;
 }
 
-Pixel Average(std::vector<optional<Pixel>> const& v) 
+Pixel Average(std::vector<optional<Pixel>> const& v)
 {
     auto const count = static_cast<int>(v.size());
     int sumR = 0;
@@ -123,7 +132,7 @@ Pixel Average(std::vector<optional<Pixel>> const& v)
     int sumB = 0;
     int pixelsCount = 0;
 
-    for (auto const& pixel : v) 
+    for (auto const& pixel : v)
     {
         if (!pixel)
         {
@@ -153,25 +162,47 @@ Pixel GetAverageColor(Bitmap const& img, int x, int y)
         img.get(x + 1, y - 1),
         img.get(x + 1, y + 1),
     };
-   
+
     return Average(pixels);
 }
 
 DWORD WINAPI BlurBitmap(CONST LPVOID lpParam)
 {
     auto data = reinterpret_cast<ProcessBitmapInfo*>(lpParam);
-    
-    int startY = data->lineNumber * data->lineHeight;
+
+    int32_t startY = static_cast<int32_t>(data->lineNumber * data->lineHeight);
 
     auto image = data->image;
-    for (std::int32_t y = startY; y < startY + data->lineHeight; ++y)
+
+    for (int32_t i = 0; i < 100; i++)
     {
-        for (std::int32_t x = 0; x < image->width(); ++x)
+        for (int32_t y = startY; y < startY + static_cast<int32_t>(data->lineHeight); ++y)
         {
-            image->set(x, y, GetAverageColor(*image, x, y));
+            for (int32_t x = 0; x < image->width(); ++x)
+            {
+                image->set(x, y, GetAverageColor(*image, x, y));
+            }
         }
     }
 
     delete data;
     ExitThread(0);
+}
+
+void SetCoresLimit(size_t limit)
+{
+    SYSTEM_INFO sysinfo;
+    GetSystemInfo(&sysinfo);
+    int maxCoresCount = sysinfo.dwNumberOfProcessors;
+
+    if (limit > static_cast<size_t>(maxCoresCount))
+    {
+        cout << "Max cores count is " << maxCoresCount << endl;
+        limit = maxCoresCount;
+    }
+
+    auto procHandle = GetCurrentProcess();
+    DWORD_PTR mask = static_cast<DWORD_PTR>((pow(2, maxCoresCount) - 1) / pow(2, maxCoresCount - limit));
+
+    SetProcessAffinityMask(procHandle, mask);
 }
