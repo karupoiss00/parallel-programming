@@ -6,6 +6,8 @@
 #include <numeric>
 #include <functional>
 #include <chrono>
+#include <iomanip>
+#include <locale>
 
 #include <tchar.h>
 #include <Windows.h>
@@ -30,6 +32,15 @@ struct ProcessBitmapInfo
     size_t lineHeight;
 };
 
+class comma_numpunct : public std::numpunct<char>
+{
+protected:
+    virtual char do_decimal_point() const
+    {
+        return ',';
+    }
+};
+
 optional<Args> ParseArgs(int argc, _TCHAR* argv[]);
 DWORD WINAPI BlurBitmap(CONST LPVOID lpParam);
 unique_ptr<HANDLE[]> CreateThreads(size_t count, function<ProcessBitmapInfo* (int)> const& dataCreatorFn);
@@ -39,6 +50,8 @@ int _tmain(int argc, _TCHAR* argv[])
 {
     auto args = ParseArgs(argc, argv);
 
+    std::locale comma_locale(std::locale(), new comma_numpunct());
+    std::cout.imbue(comma_locale);
 
     if (!args)
     {
@@ -50,6 +63,8 @@ int _tmain(int argc, _TCHAR* argv[])
     {
         SetCoresLimit(args->coresCount);
 
+        const auto start{ std::chrono::steady_clock::now() };
+
         Bitmap* image = new Bitmap(args->inputFileName);
         unsigned lineHeight = image->height() / args->threadsCount;
 
@@ -60,8 +75,7 @@ int _tmain(int argc, _TCHAR* argv[])
                 lineHeight,
             };
             });
-        const auto start{ std::chrono::steady_clock::now() };
-
+        
         for (int i = 0; i < args->threadsCount; i++)
         {
             ResumeThread(threads[i]);
@@ -69,11 +83,10 @@ int _tmain(int argc, _TCHAR* argv[])
 
         WaitForMultipleObjects(args->threadsCount, threads.get(), true, INFINITE);
 
-        const std::chrono::duration<double> ellapsedSeconds{ std::chrono::steady_clock::now() - start };
-
-        cout << "time: " << ellapsedSeconds.count() << endl;
-
         image->save(args->outputFileName);
+
+        const std::chrono::duration<double> ellapsedSeconds{ std::chrono::steady_clock::now() - start };
+        cout << ellapsedSeconds.count() << endl;
     }
     catch (const bmp::Exception& e)
     {
@@ -174,7 +187,7 @@ DWORD WINAPI BlurBitmap(CONST LPVOID lpParam)
 
     auto image = data->image;
 
-    for (int32_t i = 0; i < 100; i++)
+    for (int32_t i = 0; i < 30; i++)
     {
         for (int32_t y = startY; y < startY + static_cast<int32_t>(data->lineHeight); ++y)
         {
