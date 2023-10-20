@@ -20,15 +20,23 @@ struct ThreadParams
     int opsCount;
 };
 
+class comma_numpunct : public numpunct<char>
+{
+protected:
+    virtual char do_decimal_point() const
+    {
+        return ',';
+    }
+};
+
 DWORD WINAPI ThreadProc(CONST LPVOID lpParam);
 
 DWORD START_TIME = 0;
 
-
 int _tmain(int argc, _TCHAR* argv[])
 {
     unsigned opsCount;
-
+    
     cin >> opsCount;
 
     HANDLE* handles = new HANDLE[THREADS_COUNT];
@@ -42,6 +50,8 @@ int _tmain(int argc, _TCHAR* argv[])
         params->opsCount = opsCount;
         handles[i] = CreateThread(NULL, 0, &ThreadProc, params, CREATE_SUSPENDED, NULL);
     }
+
+    //SetThreadPriority(handles[0], THREAD_PRIORITY_HIGHEST);
 
     for (int i = 0; i < THREADS_COUNT; i++)
     {
@@ -85,6 +95,9 @@ DWORD WINAPI ThreadProc(CONST LPVOID lpParam)
     ThreadParams* param = reinterpret_cast<ThreadParams*>(lpParam);
     ofstream output;
     output.open("thread" + to_string(param->number) + ".txt");
+
+    locale comma_locale(locale(), new comma_numpunct());
+    output.imbue(comma_locale);
 
     for (size_t i = 0; i < param->opsCount; i++)
     {
