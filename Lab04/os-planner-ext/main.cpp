@@ -58,6 +58,8 @@ int MapNumberToPriority(int number);
 int _tmain(int argc, _TCHAR* argv[])
 {
     auto args = ParseArgs(argc, argv);
+    int a;
+    cin >> a;
 
     if (!args)
     {
@@ -205,15 +207,13 @@ DWORD WINAPI BlurBitmap(CONST LPVOID lpParam)
 
     ofstream output;
     output.open("thread" + to_string(data->lineNumber) + ".txt");
-    locale comma_locale(locale(), new comma_numpunct());
-    output.imbue(comma_locale);
 
     unsigned startY = data->lineNumber * data->lineHeight;
 
     auto image = data->image;
     unsigned imageWidth = image->width();
 
-    for (unsigned i = 0; i < 30; i++)
+    for (unsigned i = 0; i < 21; i++)
     {
         for (unsigned y = startY; y < startY + data->lineHeight; ++y)
         {
